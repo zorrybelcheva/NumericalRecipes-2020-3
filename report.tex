@@ -1,0 +1,214 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{left = 15mm, top = 15mm, bottom = 15mm, right = 15mm}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+}
+\input{included_packages}
+
+\title{Numerical Recipes in Astrophysics 2020 \\ Third homework set}
+\author{Zorry Belcheva \\ s2418797}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Exercise 1}
+For part a) of the first exercise, we're minimising $\chi^2$ for a model. We have the number density of satellites as a function of $x \equiv r/r_\mathrm{vir}$:
+\begin{equation}
+    n(x) = A\langle N_\mathrm{sat}\rangle \left(\frac{x}{b}\right)^{a-3}\exp\left[-\left(\frac{x}{b}\right)^c\right].
+\end{equation}
+The model parameters are $a, b, c$, $\langle N_\mathrm{sat}\rangle$ is the mean number of satellites per halo, and $A$ is a normalisation constant. First we read the data using the Read\textunderscore data class. We go through each line, taking into account some useful things about the data format: the 4th line contains the number of haloes in this mass bin, and after a hashtag we have the positions of all the satellites of a halo (if any), given in $x, \phi$ and $\theta$. We'll only use $x$ here. $\langle N_\mathrm{sat}\rangle$ is just the average of the number of satellites per halo (line 32). To proceed, we should bin the data. Looking at equation (1), it makes sense to bin the satellites \emph{logarithmically} in x. We know that the maximum value of x is 5; to me, a suitable lower bound is 10$^{-4}$, as it's low enough but not too low, and I'd expect most of the satellites, if not all, to reside at $r>10^{-4}r_\mathrm{vir}$. Therefore I chose 20 logarithmically spaced bins between $x \in [10^{-4}, 5]$, again thinking that 20 is a suitable number to divide this x-range into. Then, we obtain the mean number of satellites per halo in each bin, $N_i$, as the counts in each bin divided by the number of haloes in this mass bin.
+
+For the $\chi^2$ minimisation, I chose to generalise my downhill simplex method from hand-in 2 (which was in 2-dimensions) to an $n$-dimension one. For a function varying in 3 parameters, we need to give 4 initial starting points that form a tetrahedron in parameter-function space. My initial guesses are x0 to x3 (lines 248-251). The N-dimensional simplex is implemented in the \verb+simplex_nd()+ function. I've set the maximal iterations limit to 8 and the default accuracy to $10^{-3}$ for the reason that it was very slow, and I am exceeding the maximal allowed time, but ideally I'd set a better accuracy. While minimising the function, we must be careful to re-evaluate the integration constant $A$ any time we change the parameters $a, b, c$, and then also calculate the $\tilde{N_i} = 4\pi \int_{x_i}^{x_{i+1}}(z)x^2 dx$ - the model mean and variance for bin $i$. So the class Get\textunderscore chi\textunderscore squared() first calculates $A$ as in assignment 1 (by integrating), then finds $\tilde{N_i}$ for the bins, and gets the $\chi^2 = \Sigma (x-\mu)^2/\sigma^2$ for the set of model parameters $(a, b, c)$. Finally, we are ready to minimise the function, in this case I used the complementary function chi\textunderscore minimise(point), lines 96-101.
+
+The simplex converges after a different number of iterations for each data file, and I find slight differences in the best-fit parameters $(a, b, c)$. They are quoted in the file output, along with the average satellite number, and the minimum $\chi^2$. Plots of the binned data as well as the best fit profiles are shown after the output.
+
+For part b), we want to minimise a Poisson log-likelihood, which, from the lecture slides, is given by:
+\begin{equation}
+    \mathcal{L}(p) = \prod_{i=0}^{N-1} \frac{\mu(x_i|p)^{y_i}\exp(-\mu(x_i|p))}{y_i!}.
+\end{equation}
+Taking the negative log of this expression, we have
+\begin{equation}
+    - \ln \mathcal{L}(p) = - \sum_{i=0}^{N-1}(y_i \ln(\mu(x_i|p)) - \mu(x_i|p) - \ln (y_i!)).
+\end{equation}
+We have $y_i = N_i$, $\mu(x_i|p) = \tilde{N_i}$. Then, out log-likelihood is:
+\begin{equation}
+    - \ln \mathcal{L}(a, b, c) = - \sum_{i=0}^{N-1}(N_i \ln(\tilde{N_i}) - \tilde{N_i} - \ln (N_i!)).
+\end{equation}
+We can further expand the factorial in the last term as the sum of logs of the numbers from $N_i$ to 1. We take the sum over all bins used in part a). The procedure to do the optimisation is the same as in part a), except this time we minimise the complementary function likelihood\textunderscore minimise(point), which calls \verb+Get_chi_squared().get_poisson_likelihood()+, because we still need to do the same steps and calculate $A$ and $\tilde{N_i}$ for any set of parameters we explore. Again, it takes a  different amount of iterations for the simplex to converge for the 5 data files. The results are quoted immediately after the results for part a) in the output file. The plots bellow show the two fits. The code runs in an incredibly long time, and I really don't know why (also, it's twice as fast on my own laptop...). If I run it for all datafiles, unfortunately I severely exceed the time limit on my office desktop (\verb+minstroom+), so I have to save a fraction of the output to a text file, and only run ex. 1 for the first two files. The rest of the output I read in from a text file, as well as the plots - I'm sorry for this, but I really couldn't find the bottleneck on time.
+
+Personally I'm not entirely happy with how the plots look, I was expecting that the 2nd method yields noticeably better results, but that's not the case - the 2 methods give a similar best-fit histogram. Moreover, they don't match the data as well as I had expected. The result success also differs for the 5 mass bins, because for central haloes of higher mass we have fewer satellites. This is visible especially closer to the central, where both best-fits predict much more data should be seen. Also, my guess is the success of any optimisation algorithm depends on the initial guesses, which were harder to pick in 3D parameter space. I also think the simplex is not the numerically optimal algorithm choice, to me it appears it is pretty slow in this case, but it might be due to an error from my side. Of course, it would be best to do a Levenberg-Marquardt routine, perhaps by implementing the analytical derivatives of the model with the parameters, as these are known exactly.
+
+For part c), we're comparing the two methods. I've implemented both a G test and a KS test. The G statistic is given by
+\begin{equation}
+    G = 2 \sum O_i \ln \frac{O_i}{E_i},
+\end{equation}
+where $O$ and $E$ denote observed and expected data value. This is implemented in the function Gtest(observed, expected). The significance of the G statistic I took from the lecture slides to be equal to:
+\begin{equation}
+Q = 1 - \frac{\gamma(k/2, x/2)}{\Gamma(k/2)},
+\end{equation}
+where $\gamma$ and $\Gamma$ denote the incomplete and complete Gamma functions. This is the CDF of a $\chi^2$ distribution, and is calculated in the functon Q(k, x), where k are the degrees of freedom, and x is the G statistic. The KS test implementation can be seen in the ks\textunderscore test(observed, expected) function, following the slides. It calculates the statistic D and its significance Q and returns both.
+
+Both the statistic and significance for the G test and the KS test for the best-fits are shown in the output after the result report. Regarding the degrees of freedom: we have the 3 fixed model parameters, $a, b, c$, but we also have the fixed total satellite number and number of haloes, so the average number of satellites is also a fixed parameter. Our free degrees are the bin observations, in this case 20 numbers. Therefore, the degrees of freedom I take to be equal to $n_\mathrm{bins} - n_{\mathrm{params}} - 1$ = 16. Regarding the results: for what I see, for the G test, although the statistic varies a bit for the two models, its Q value is very close for both, and is at almost all cases equal to 1, which makes me think this particular statistic doesn't distinguish both fit models - as I would have expected by seeing the plots. According to my eye, there's little difference between the two fits, and they're both equally `far' from the data; the G test statistic seems to agree. Of course, here we don't comment on the actual success of my fits - perhaps the best fit parameters are just wrong. The KS statistic, on the other hand, gives different results for both models. For the 3 higher mass bins, the KS Q-value is higher for the log-likelihood minimisation, so I think we could naively say it favours this model? But it's the opposite case for the two lower mass bins. In reality, I wouldn't use either of these tests to draw a definitive conclusion.
+
+\lstinputlisting[language=Python, firstline=1]{model-optimisation.py}
+
+\lstinputlisting{output/model-optimisation.txt}
+
+\lstinputlisting{output/1-missing.txt}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=12cm]{plots/satgals_m11-hist.png}
+    \caption{Best fits for the two models and data in the corresponding mass bin.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}[!hb]
+    \centering
+    \includegraphics[width=12.5cm]{plots/satgals_m12-hist.png}
+    \caption{Best fits for the two models and data in the corresponding mass bin.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=12.5cm]{plots/satgals_m13-hist.png}
+    \caption{Best fits for the two models and data in the corresponding mass bin.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}[!hb]
+    \centering
+    \includegraphics[width=12.5cm]{plots/satgals_m14-hist.png}
+    \caption{Best fits for the two models and data in the corresponding mass bin.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12.5cm]{plots/satgals_m15-hist.png}
+    \caption{Best fits for the two models and data in the corresponding mass bin.}
+    \label{fig:my_label}
+\end{figure}
+
+\newpage
+\section{Exercise 2}
+To start the second exercise, aiming to calculate forces using an FFT, we first need to initialise our simulation box. It is a cubic grid with $16^3$ grid points. I define a separate class for a particle and a point, with the latter being a \emph{grid} point, i.e. at a quantised position, whereas a particle can be initialised anywhere. There is also a Cell class, defining a cell starting at coordinates (x, y, z) and having a given width. Mass can also be assigned to cells and grid points; the latter also have a delta attribute to hold the density contrast/overdensity. The Grid class initialises a grid with a given dimension and cell width, then calls a function to initialise the cells, as well as the grid points. The add\textunderscore particle() method appends an object of Particle class to the grid. In the main function, we first initialise the grid. Then, we add 1024 particles with coordinates given by the \verb+positions+ array as described in the exercise (fixing the numpy random seed).
+
+We then proceed to the Cloud-In-Cell (CIC) implementation - method \verb+assign_masses_cic()+. We loop through all the particles, and then through all grid points, and find the 8 nearest grid points to the given particle, using periodic boundary conditions. Finally, we calculate the mean density of the grid $\bar{\rho} = m/V$ i.e. total mass divided by total volume\footnote{The expression in the method assumes the particles are of mass 1 each.}, as well as the density contrast $\delta = (\rho-\bar{\rho})/\bar{\rho}$ - an attribute of each grid point. We call the CIC method in the main, and to check for conservation of mass, we can see the sum of masses assigned to all grid points - if the method has assigned the correct weights to the points, and periodic boundary conditions are satisfied, this number should be equal to the total mass in particles, i.e. the number of particles each of mass unity. In the output of the script we can see that the total mass assigned is indeed 1024 with a small numerical error.
+
+Finally, we create plots of the density contrast for the requested grid slices. The plots are shown after the code output.
+
+For part b), we need to solve the spatial dependence of the Poisson equation: $\nabla^2 \Phi \propto \delta$. Fourier transforming this proportionality, we have
+\begin{equation}
+    k^2 \tilde{\Phi} \propto \tilde{\delta} \quad \Rightarrow \quad  \tilde{\Phi} \propto \frac{\tilde{\delta}}{k^2},
+\end{equation}
+where $k$ is the wavevector, given by $k^2 = k_x^2 + k_y^2 + k_z^2$. Inverse Fourier transforming the last proportionality, we have that the potential is proportional to the inverse FT of the overdensity divided by the wavevector squared:
+\begin{equation}
+    \Phi \propto \mathcal{F}^{-1}\left(\frac{\tilde{\delta}}{k^2}\right).
+\end{equation}
+Therefore, to get the potential, we need to Fourier transform the overdensity, divide by $k^2$, then inverse FT the product. I start with a discrete Fourier transform, see dft(x). The inverse equivalent is idft(x). Then, FFT the implementation that finally worked for me is shown in the fft(x) function. It is a recursive version of the Cooley-Tukey algorithm, dividing the array elements into even and odd until we have only pairs of elements; on the latter, we do a DFT. Then, we do a `butterfly swap' of the elements at the corresponding indices.\footnote{In order to finally write a working implementation of the FFT, I had to look at a few sources, notably \href{https://www.algorithm-archive.org/contents/cooley_tukey/cooley_tukey.html}{this link} and \href{https://jakevdp.github.io/blog/2013/08/28/understanding-the-fft/}{this link}, because my first six attempts of different Cooley-Tukey versions, following the slides or book, both recursive and iterative, were unfortunately unsuccessful... Looking at these sources helped me understand what to do better, but I did my best to write \emph{my own} version of the algorithm.} This Fourier transforms a 1D array. The inverse equivalent is ifft(x). However, we need a 3D FFT, which is just a sequence of 1D FFTs. This is implemented in fft\textunderscore3d(x). First we loop over the the first, then, the 2nd, and finally the third dimension of x. The inverse equivalent is ifft\textunderscore3d(x). In the main, we do a FT of the overdensity $\delta$. I also check whether the result is the same as the numpy result, and they match, as seen in the output. Then, I create the $k^2$ vector, looping through the indices. The FT of the potential is then the FT of the overdensity over $k^2$. Finally, we have to inverse FT this (in 3D). The script finishes with plotting of the Fourier-transformed potential (log of the absolute value, as it is a complex number, and we expect it to have significant both real and imaginary parts), and the calculated (inverse-fourier-transformed) potential $\Phi$ at the requested grid slices. The plots are shown after the code output. For some reason, the IFT doesn't match the numpy equivalent, but I couldn't trace my error down. Comparing the slices I obtain to the ones of a classmate, though, as well as to the numpy result, I see that the overall structure is still recovered pretty well. The potential value (colorbar) has a different range, though, but after all we didn't care about the normalisation here. Still, I know the result is not entirely correct.
+
+\lstinputlisting[language=Python, firstline=1]{cic-fft.py}
+
+\lstinputlisting{output/cic-fft.txt}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=11cm]{plots/grid-4.png}
+    \caption{Slice of grid at z=4.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-9.png}
+    \caption{Slice of grid at z=9.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-11.png}
+    \caption{Slice of grid at z=11.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-14.png}
+    \caption{Slice of grid at z=14.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-ft-4.png}
+    \caption{Slice of FR of density contrast divided by $k^2$ at z=4.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-ft-9.png}
+    \caption{Slice of FR of density contrast divided by $k^2$ at z=9.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-ft-11.png}
+    \caption{Slice of FR of density contrast divided by $k^2$ at z=11.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-ft-14.png}
+    \caption{Slice of FR of density contrast divided by $k^2$ at z=14.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-4.png}
+    \caption{Slice of obtained potential at z=4.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-9.png}
+    \caption{Slice of obtained potential at z=9.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-11.png}
+    \caption{Slice of obtained potential at z=11.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=12cm]{plots/grid-phi-14.png}
+    \caption{Slice of obtained potential at z=14.5.}
+    \label{fig:my_label}
+\end{figure}
+
+\section*{Acknowledgements}
+To solve these exercises, I have again reused and reconstructed parts of the code of my own homework submission for the NUR course in 2019, notably the KS test and the CIC grid. To understand the Fast Fourier Transform, I looked at a few sources online (\href{https://www.algorithm-archive.org/contents/cooley_tukey/cooley_tukey.html}{this link} and \href{https://jakevdp.github.io/blog/2013/08/28/understanding-the-fft/}{this link}). The rest of the algorithms I've mainly implemented following the lecture slides. Again, I'd like to thank my classmate Gijs Vermari\"en for the useful discussions.
+
+\end{document}
